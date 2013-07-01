@@ -1,9 +1,9 @@
 <?php
 /*
-Plugin Name: Amereservant PowerPress Auth Alternative
+Plugin Name: Amereservant PowerPress Auth
 Plugin URI: http://amereservant.com
 Description: Fixes HTTP Authentication for PHP CGI module and creates a user-token system for authentication of private feeds so feeds validate on iOS devices.  The correct .htaccess rules must also be added for the PHP CGI fix.
-Version: 1.0
+Version: 1.1
 Author: Amereservant
 Author URI: http://amereservant.com/
 */
@@ -19,8 +19,8 @@ Author URI: http://amereservant.com/
  */
 function _amere_ppaa_init()
 {
-    add_action('powerpress_feed_auth_pre', '_amere_ppaa_cgi_fix');
-    add_filter('powerpress_feed_auth_use_alt', '_amere_ppaa_use_alt_auth', 10, 2);
+    add_filter('powerpress_feed_auth', '_amere_ppaa_cgi_fix', 10, 2);
+    add_filter('powerpress_feed_auth', '_amere_ppaa_use_alt_auth', 10, 3);
 }
 add_action('init', '_amere_ppaa_init');
 
@@ -42,7 +42,7 @@ add_action('init', '_amere_ppaa_init');
  * @access  private
  * @since   1.0
  */
-function _amere_ppaa_use_alt_auth( $default, $error )
+function _amere_ppaa_use_alt_auth( $default, $type, $slug )
 {
     $token = _amere_ppaa_get_token();
     
@@ -52,10 +52,21 @@ function _amere_ppaa_use_alt_auth( $default, $error )
         $user_id = get_option('_ameretoken_'. $token);
         //var_dump($user_id);exit;
         if( $user_id )
-        {
-            add_filter('powerpress_feed_auth_alt_method', create_function('', 'return false;'));
             return true;
+        
+        return false;
+    }
+    elseif( isset($_SERVER['PHP_AUTH_USER']) && isset($_SERVER['PHP_AUTH_PW']) )
+    {
+        $user = wp_authenticate($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']);
+
+        if( !is_wp_error($user) )
+        {
+            $FeedSettings = get_option('powerpress_feed_'.$slug);
+            if( $user->has_cap($FeedSettings['premium']) )
+                _amere_ppaa_powerpress_feed_auth_success( $user, $slug );
         }
+        return false;
     }
     return $default;
 }
@@ -80,14 +91,6 @@ function _amere_ppaa_use_alt_auth( $default, $error )
  */
 function _amere_ppaa_powerpress_feed_auth_success( $user, $feed_slug )
 {
-    $token = _amere_ppaa_get_token();
-
-    // Check if token exists, if so, exit function ...
-    if( $token ) {
-        header('HTTP/1.1 200 OK');
-        return;
-    }
-
     // Generate token using MD5 hash from user's username and the current feed slug
     $token = '_ameretoken_'. md5($user->data->user_login . $feed_slug);
 
@@ -134,7 +137,7 @@ function _amere_ppaa_get_token()
             parse_str($_SERVER['REDIRECT_QUERY_STRING'], $token);
         else
             $token = isset($_GET['ftoken']) ? array('ftoken' => $_GET['ftoken']) : false;
-        }
+        
         $token = isset($token['ftoken']) ? $token['ftoken']:$token;
     }
     return $token;
@@ -197,9 +200,11 @@ add_filter('query_vars', '_amere_ppaa_add_query_vars');
  * @access  private
  * @since   1.0
  */
-function _amere_ppaa_cgi_fix()
+function _amere_ppaa_cgi_fix( $val )
 {
     if( isset($_SERVER['HTTP_AUTHORIZATION']) )
         list($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']) = explode(':', base64_decode(substr($_SERVER['HTTP_AUTHORIZATION'], 6)));
+    
+    return $val;
 }
 
