@@ -1,6 +1,6 @@
 <?php
 /*
-Plugin Name: Amereservant PowerPress Auth
+Plugin Name: PowerPress Token Auth
 Plugin URI: http://amereservant.com
 Description: Fixes HTTP Authentication for PHP CGI module and creates a user-token system for authentication of private feeds so feeds validate on iOS devices.  The correct .htaccess rules must also be added for the PHP CGI fix.
 Version: 1.1
@@ -55,6 +55,13 @@ function _amere_ppaa_use_alt_auth( $default, $type, $slug )
             return true;
         
         return false;
+    }
+    $feed_settings = get_option('powerpress_feed_'. $slug);
+    if( !isset($_SERVER['PHP_AUTH_USER']) || !isset($_SERVER['PHP_AUTH_PW']) )
+    {
+        header('HTTP/1.0 401 Unauthorized');
+        header('WWW-Authenticate: Basic realm="'. str_replace('"', '', $feed_settings['title']) .'"');
+        exit;
     }
     elseif( isset($_SERVER['PHP_AUTH_USER']) && isset($_SERVER['PHP_AUTH_PW']) )
     {
@@ -111,7 +118,7 @@ function _amere_ppaa_powerpress_feed_auth_success( $user, $feed_slug )
     wp_redirect($url, 301);
     exit;
 }
-add_action('powerpress_feed_auth_success', '_amere_ppaa_powerpress_feed_auth_success', 1, 2);
+
 
 /**
  * Get Authentication Token
@@ -129,6 +136,8 @@ function _amere_ppaa_get_token()
 
     if( $wp_rewrite->using_permalinks() )
     {
+        if( !isset($wp_query->query_vars['ftoken']) )
+            return false;
         $token = $wp_query->query_vars['ftoken'];
     }
     else
