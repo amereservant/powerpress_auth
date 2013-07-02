@@ -3,7 +3,7 @@
 Plugin Name: PowerPress Token Auth
 Plugin URI: http://amereservant.com
 Description: Creates a user-token system for authentication of private feeds so feeds validate on iOS/similar devices.  This plugin depends on the <a href="http://wordpress.org/plugins/powerpress/" title="Blubrry PowerPress">Blubrry PowerPress</a> plugin.
-Version: 1.2
+Version: 1.3
 Author: Amereservant
 Author URI: http://amereservant.com/
 */
@@ -19,6 +19,15 @@ class powerpressAuth
     */
     protected $prefix = '_powerpressAuth_';
 
+   /**
+    * Feed Token (without prefix)
+    *
+    * @var      string
+    * @access   private
+    * @since    1.3
+    */
+    private $_token = false;
+    
    /**
     * Plugin Options
     *
@@ -81,45 +90,58 @@ class powerpressAuth
     */
     public function tokenAuth( $authenticated, $type, $feed_slug )
     {
-        $token = get_query_var('token');
+        $this->_token = get_query_var('token');
+        
+        // Parse the URL and strip the token if it exists
+        $url_parts    = parse_url($_SERVER['REQUEST_URI']);
+        $url          = site_url() .'/';
+        
+        if( isset($url_parts['query']) )
+        {
+            parse_str($url_parts['query'], $qp);
+            if( $qp )
+            {
+                unset($qp['token']);
+                $qp;
+                if(count($qp) > 0)
+                    $url .= '?'. build_query($qp);
+            }
+        }
+        elseif( isset($url_parts['path']) )
+        {
+            $path = trim(substr($url_parts['path'], 0, strpos($url_parts['path'], 'token')), '/');
+            if( !$path )
+                $path = trim($url_parts['path'], '/');
+
+            if( strlen($path) > 0 )
+                $url .= $path .'/';
+        }
         
         // Try to validate with token
-        if( $token && strlen($token) > (strlen($this->prefix) + 32) )
+        if( $this->_token && strlen($this->_token) > 30 )
         {
-            if( ($user_id = $this->_checkToken($token)) !== false )
+            if( ($user_id = $this->_checkTokenExists()) !== false )
                 return true;
-            return false;
+            
+            // Redirect them back to the login page
+            wp_redirect(wp_login_url($url));
         }
+
+        if( is_user_logged_in() )
+        {
+            $user = wp_get_current_user();
+            // Get the PowerPress feed settings for given feed
+            $feed_settings = get_option('powerpress_feed_'. $feed_slug);
+            
+            if( $user->has_cap($feed_settings['premium']) )
+                return $this->_authSuccess( $user, $feed_slug );
+            else
+                die('You do not have permission to access this feed!');
+        }
+
+        wp_redirect(wp_login_url($url));
+        exit;
         
-        // Get the PowerPress feed settings for given feed
-        $feed_settings = get_option('powerpress_feed_'. $feed_slug);
-
-        // PHP CGI fix
-        if( isset($_SERVER['HTTP_AUTHORIZATION']) )
-            list($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']) = 
-                explode(':', base64_decode(substr($_SERVER['HTTP_AUTHORIZATION'], 6)));
-
-        // Present the user with the authentication prompt
-        if( !isset($_SERVER['PHP_AUTH_USER']) || !isset($_SERVER['PHP_AUTH_PW']) ||
-            !($user = wp_authenticate($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW'])) )
-        {
-            header('HTTP/1.0 401 Unauthorized');
-            header('WWW-Authenticate: Basic realm="Private Feed '. str_replace('"', '', $feed_settings['title']) .'"');
-            die('You are not authorized to view this feed.');
-        }
-        // If they've submitted the username and password, try to authenticate them
-        elseif( isset($_SERVER['PHP_AUTH_USER']) && isset($_SERVER['PHP_AUTH_PW']) )
-        {
-            $user = wp_authenticate($_SERVER['PHP_AUTH_USER'], $_SERVER['PHP_AUTH_PW']);
-
-            if( !is_wp_error($user) )
-            {
-                if( $user->has_cap($feed_settings['premium']) )
-                    return $this->_authSuccess( $user, $feed_slug );
-            }
-            return false;
-        }
-        return $authenticated;
     }
 
    /**
@@ -145,23 +167,20 @@ class powerpressAuth
     function _authSuccess( $user, $feed_slug )
     {
         // Generate token using MD5 hash from user's username and the current feed slug
-        $token = wp_hash($user->data->user_login . $feed_slug, 'secure_auth');
+        $this->_token = wp_hash($user->data->user_login . $feed_slug, 'secure_auth');
 
-        if( $this->_checkToken($token) )
-            return true;
-
-        // Store the token as an option with the user ID as the value.
-        $this->_options['user_salts'][$token] = $user->ID;
-        $this->_updateOptions();
+        // Store the token if it isn't already stored
+        if( !$this->_checkTokenExists() )
+        {
+            // Store the token as an option with the user ID as the value.
+            $this->_options['tokens'][$this->_token] = $user->ID;
+            $this->_updateOptions();
+        }
         
         global $wp, $wp_rewrite;
 
         // Create the feed URL with the token added to it
-        if( $wp_rewrite->using_permalinks() )
-            $url = site_url() .'/feed/'. get_query_var('feed') .'/token/'. $this->prefix . $token .'/';
-        else
-            $url = site_url() .'/?'. build_query(array('feed' => get_query_var('feed'), 
-                'token' => $this->prefix . $token));
+        $url = $this->_generateTokenURL($user, $feed_slug);
         
         // Redirect the user to the new URL
         if( !get_query_var('token') )
@@ -173,6 +192,42 @@ class powerpressAuth
         {
             return true;
         }
+    }
+
+   /**
+    * Generate Token URL
+    *
+    * This generates the URL that includes the token.
+    *
+    * @param    object  $user       WP_User instance for the logged in user
+    * @param    string  $feed_slug  The current feed slug the user is being authenticated for
+    * @return   string              The URL with the token if successfully validated
+    * @access   private
+    * @since    1.3
+    */
+    private function _generateTokenURL( $user, $feed_slug )
+    {
+        $this->_token = false;
+        if( !is_a($user, 'WP_User') )
+        {
+            trigger_error('Invalid WP_User object!');
+            return false;
+        }
+        if( strlen($feed_slug) < 1 )
+        {
+            trigger_error('Invalid feed slug given.');
+            return false;
+        }
+        $this->_token = wp_hash($user->data->user_login . $feed_slug, 'secure_auth');
+
+    
+        $url = site_url() .'/';
+        if( get_option('permalink_structure') )
+            $url .= 'feed/'. $feed_slug .'/token/'. $this->prefix . $this->_token .'/';
+        else
+            $url .= '?'. build_query(array('feed' => $feed_slug, 'token' => $this->prefix . $this->_token));
+
+        return $url;
     }
 
    /**
@@ -203,19 +258,22 @@ class powerpressAuth
     * Checks given token to see if it is set and if so, it returns the associated
     * user ID.
     *
-    * @param    string  $token  the token to check
+    * @uses     $_token         Checks the current token to see if it's valid or not
+    *
+    * @param    void
     * @return   integer         User ID if token exists, (bool)FALSE if not
     * @access   private
     * @since    1.2
     */
-    private function _checkToken( $token )
+    private function _checkTokenExists()
     {
-        $token = str_replace($this->prefix, '', $token);
+        // The prefix shouldn't be on there, but we'll just make sure
+        $token = str_replace($this->prefix, '', $this->_token);
 
-        if( !isset($this->_options['tokens'][$this->prefix . $token]) )
+        if( !isset($this->_options['tokens'][$token]) )
             return false;
 
-        return $this->_options['tokens'][$this->prefix . $token];
+        return $this->_options['tokens'][$token];
     }
 
    /**
@@ -331,6 +389,22 @@ class powerpressAuth
         }
         
         return $rules;
+    }
+
+   /**
+    * Flush Feed Cache
+    *
+    * Used to flush the RSS feed cache data.
+    *
+    * @param    void
+    * @return   void
+    * @access   private
+    * @since    1.3
+    */
+    private function _flushCache()
+    {
+        global $wpdb;
+        $wpdb->query("DELETE FROM `{$wpdb->options}` WHERE `option_name` LIKE ('_transient%_feed_%')");
     }
 }
 
