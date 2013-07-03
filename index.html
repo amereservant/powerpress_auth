@@ -1,37 +1,37 @@
 <!DOCTYPE html>
 <html>
+
   <head>
-    <meta charset='utf-8'>
-    <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
-    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen" />
-    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen" />
-    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print" />
-    <!--[if lt IE 9]>
-    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
-    <![endif]-->
-    <title>Powerpress auth by amereservant</title>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Powerpress auth : PowerPress Token Authentication is an alternative authentication system for the Blubrry PowerPress plugin for WordPress.  It allows using tokens for authenticating private feeds." />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Powerpress auth</title>
   </head>
 
   <body>
-    <div id="container">
-      <div class="inner">
 
-        <header>
-          <h1>Powerpress auth</h1>
-          <h2>PowerPress Token Authentication is an alternative authentication system for the Blubrry PowerPress plugin for WordPress.  It allows using tokens for authenticating private feeds.</h2>
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/amereservant/powerpress_auth">View on GitHub</a>
+
+          <h1 id="project_title">Powerpress auth</h1>
+          <h2 id="project_tagline">PowerPress Token Authentication is an alternative authentication system for the Blubrry PowerPress plugin for WordPress.  It allows using tokens for authenticating private feeds.</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/amereservant/powerpress_auth/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/amereservant/powerpress_auth/tarball/master">Download this project as a tar.gz file</a>
+            </section>
         </header>
+    </div>
 
-        <section id="downloads" class="clearfix">
-          <a href="https://github.com/amereservant/powerpress_auth/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
-          <a href="https://github.com/amereservant/powerpress_auth/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
-          <a href="https://github.com/amereservant/powerpress_auth" id="view-on-github" class="button"><span>View on GitHub</span></a>
-        </section>
-
-        <hr>
-
-        <section id="main_content">
-          <h1>
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>
 <a name="powerpress-token-authentication" class="anchor" href="#powerpress-token-authentication"><span class="octicon octicon-link"></span></a>PowerPress Token Authentication</h1>
 
 <p>A WordPress plugin that works with the Blubrry <a href="http://create.blubrry.com/resources/powerpress/">Powerpress</a> plugin to create a token authentication system for use with mobile devices/etc. on private feeds.</p>
@@ -49,21 +49,52 @@
 <p><strong>1.3</strong></p>
 
 <ul>
-<li>
-<p>Changed the login system from HTTP Authentication to the WordPress login system.</p>
+<li>Changed the login system from HTTP Authentication to the WordPress login system.</li>
+<li>Fixed rewrite issue, however the token query var is not being recognized on multisite so alternative method is currently being used.</li>
+</ul><h3>
+<a name="how-it-works" class="anchor" href="#how-it-works"><span class="octicon octicon-link"></span></a>How It Works</h3>
 
-<p>BUGS - The pretty URLs aren't working for some reason.  They keep generating 404 error pages instead of rendering the content accordingly.</p>
+<p>First, the feed must be set to require a password <em>(Premium Content)</em>, which this plugin intercepts the authentication part.</p>
+
+<p>The plugin hooks into the <code>powerpress_feed_auth</code> hook and checks to see if the current user is logged in or not.  If they are not logged in, they will be redirected to the WordPress login screen.</p>
+
+<p>Once they successfully log in, they will be re-directed back to the protected feed and a token specifically for that user &amp; feed will be created and the user will be checked for proper permission levels for accessing the feed.  If they do not have permission, access will be denied and the token will be of no use.</p>
+
+<p>The token is then used to verify it's associated with a user id and doesn't require any further authentication from the user unless the token is at some point rejected.</p>
+
+<h4>
+<a name="changing-the-token" class="anchor" href="#changing-the-token"><span class="octicon octicon-link"></span></a>Changing The Token</h4>
+
+<p>The token is generated by using 3 values:</p>
+
+<ol>
+<li>The username of the logged in user.</li>
+<li>The feed slug.</li>
+<li>The secret salts in your wp-config.php file, as in <a href="http://core.trac.wordpress.org/browser/tags/3.5.2/wp-includes/pluggable.php#L1305">http://core.trac.wordpress.org/browser/tags/3.5.2/wp-includes/pluggable.php#L1305</a>
 </li>
-</ul>
-        </section>
-
-        <footer>
-          Powerpress auth is maintained by <a href="https://github.com/amereservant">amereservant</a><br>
-          This page was generated by <a href="http://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
-        </footer>
-
-        
-      </div>
+</ol><p>These tokens are then stored in the WordPress options value <code>_powerpress_auth_options</code> under the 'tokens' parameter.  So by changing any of the 3 above-mentioned values and then removing any keys for the user from teh 'tokens' parameter, the user must revalidate for a new token.  An easy to replace token system may be added in a future version.</p>
+      </section>
     </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Powerpress auth maintained by <a href="https://github.com/amereservant">amereservant</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+              <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-10159244-27");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+
   </body>
 </html>
