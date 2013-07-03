@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: PowerPress Token Auth
-Plugin URI: http://amereservant.com
+Plugin URI: http://amereservant.github.io/powerpress_auth
 Description: Creates a user-token system for authentication of private feeds so feeds validate on iOS/similar devices.  This plugin depends on the <a href="http://wordpress.org/plugins/powerpress/" title="Blubrry PowerPress">Blubrry PowerPress</a> plugin.
 Version: 1.3
 Author: Amereservant
@@ -95,7 +95,7 @@ class powerpressAuth
         // Parse the URL and strip the token if it exists
         $url_parts    = parse_url($_SERVER['REQUEST_URI']);
         $url          = site_url() .'/';
-        
+
         if( isset($url_parts['query']) )
         {
             parse_str($url_parts['query'], $qp);
@@ -109,14 +109,28 @@ class powerpressAuth
         }
         elseif( isset($url_parts['path']) )
         {
-            $path = trim(substr($url_parts['path'], 0, strpos($url_parts['path'], 'token')), '/');
-            if( !$path )
-                $path = trim($url_parts['path'], '/');
+            // We do two things here ...
+            // 1) Strip the token from the URL (if it exists) for the redirect URL
+            // 2) Capture the token when the rewrite fails even though the token is present
+            $token_pos = strpos($url_parts['path'], 'token');
+            if( $token_pos )
+            {
+                $path       = trim(substr($url_parts['path'], 0, $token_pos), '/');
+                $token_prts = explode('/', trim(substr($url_parts['path'], $token_pos), '/'));
 
-            if( strlen($path) > 0 )
-                $url .= $path .'/';
+                if( isset($token_prts[1]) )
+                    $token = trim(str_replace($this->prefix, '', $token_prts[1]));
+                else
+                    $token = false;
+
+                if( !$this->_token && $token )
+                    $this->_token = $token;
+                
+                if( strlen($path) > 0 )
+                    $url .= $path .'/';
+            }
         }
-        
+
         // Try to validate with token
         if( $this->_token && strlen($this->_token) > 30 )
         {
@@ -408,4 +422,4 @@ class powerpressAuth
     }
 }
 
-add_action('init', create_function('',' new powerpressAuth;'));
+add_action('plugins_loaded', create_function('',' new powerpressAuth;'));
